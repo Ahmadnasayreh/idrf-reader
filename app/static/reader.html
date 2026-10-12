@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDRF Reader</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.nav{display:flex;align-items:center;gap:8px}
+.nav .btn{padding:5px 11px;font-size:16px;line-height:1}
+.navtxt{display:flex;flex-direction:column;line-height:1.2;min-width:8.5em}
+.navtxt b{font-size:14px;font-variant-numeric:tabular-nums}
+.navtxt span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.casebox{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.code{font-size:19px;font-weight:700;letter-spacing:.04em}
+.casebox small{font-size:12px;color:var(--muted)}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:12px}
+.timer{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right}
+.bar{flex-basis:100%;height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin:-2px 0 -4px}
+.bar i{display:block;height:100%;width:0;background:var(--text)}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 410px;min-height:0}
+.viewer{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;min-width:0;background:#000}
+.views{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);grid-template-rows:1fr 1fr;gap:2px;background:#232A32;min-height:0}
+.vp{position:relative;background:#000;min-height:0;min-width:0;overflow:hidden}
+.vp.main{grid-row:1 / span 2}
+.vp canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:#9AA6B2;font-size:13.5px;background:#000}
+.msg[hidden]{display:none}
+.tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:9px 12px;background:var(--panel);border-top:1px solid var(--line)}
+.slice{display:flex;align-items:center;gap:10px;flex:1 1 200px;font-size:13px;font-variant-numeric:tabular-nums}
+.slice input{flex:1;accent-color:var(--text)}
+.hint{font-size:12px;color:var(--muted);flex-basis:100%}
+
+.ans button{min-width:62px}
+.ans button[aria-pressed="true"][data-v="present"]{background:var(--present);color:var(--present-ink);font-weight:700}
+.ans button[aria-pressed="true"][data-v="absent"]{background:var(--absent);color:var(--absent-ink);font-weight:700}
+.ans button[aria-pressed="true"][data-v="na"]{background:var(--na);color:var(--na-ink);font-weight:700}
+.panel{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0;background:var(--panel);border-left:1px solid var(--line)}
+.panel-h{padding:13px 16px 11px;border-bottom:1px solid var(--line)}
+.panel-h h2{margin:0;font-size:15.5px}
+.tally{display:flex;gap:16px;font-size:13px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+.tally .p{color:var(--present);font-weight:700}
+details.def{margin-top:8px;font-size:12.5px;color:var(--muted)}
+details.def summary{cursor:pointer;color:var(--text)}
+details.def p{margin:6px 0 0;max-width:62ch}
+.panel-b{overflow:auto}
+.grp{border-top:1px solid var(--line)}
+.grp:first-child{border-top:0}
+.grp-h{display:flex;align-items:center;gap:8px;padding:11px 16px 3px}
+.grp-h h3{margin:0;font-size:13px}
+.grp-n{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.linkbtn{margin-left:auto;background:none;border:0;padding:3px 2px;font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.linkbtn:hover{color:var(--text)}
+.item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;padding:7px 16px 7px 13px;border-left:3px solid transparent}
+.item[data-state="present"]{border-left-color:var(--present)}
+.item-t{flex:1 1 150px;font-size:13.5px;line-height:1.35}
+.item .seg{margin-left:auto}
+.extra{border-top:1px solid var(--line);padding:12px 16px 16px;display:grid;gap:10px}
+.conf{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px}
+.conf .seg button{min-width:34px}
+textarea{width:100%;resize:vertical;min-height:54px}
+.panel-f{padding:12px 16px;border-top:1px solid var(--line);background:var(--panel);display:grid;gap:5px}
+.panel-f .btn.primary{padding:10px 14px;font-size:14px}
+.left{font-size:12.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+.donecard{margin:14px 16px 4px;padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--raised)}
+.donecard p{margin:0}
+
+@media (max-width:900px){
+  .app{height:auto;min-height:100%;display:block}
+  main{display:block}
+  .viewer{display:block}
+  .views{grid-template-columns:1fr 1fr;grid-template-rows:auto auto}
+  .vp.main{grid-column:1 / span 2;grid-row:auto;aspect-ratio:1 / 1}
+  .vp.side{aspect-ratio:1 / 1}
+  .panel{display:block;border-left:0;border-top:1px solid var(--line)}
+  .panel-b{overflow:visible}
+  .panel-f{position:sticky;bottom:0;z-index:5;box-shadow:0 -8px 18px rgba(0,0,0,.14)}
+  .top-r{margin-left:0;width:100%;justify-content:space-between}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><b>IDRF Reader</b><span id="who">Signing in…</span></div>
+    <div class="nav">
+      <button class="btn" id="prevBtn" aria-label="Previous case" title="Previous case">‹</button>
+      <div class="navtxt"><b id="caseN">Case – of –</b><span id="scoredN"></span></div>
+      <button class="btn" id="nextBtn" aria-label="Next case" title="Next case">›</button>
+    </div>
+    <div class="casebox"><span class="code" id="code">—</span><small>Timepoint and outcome hidden</small></div>
+    <div class="top-r">
+      <span class="timer" id="timer" title="Time spent on this case">00:00</span>
+      <button class="btn" id="logout">Sign out</button>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+  </header>
+
+  <main>
+    <section class="viewer" aria-label="Image viewer">
+      <div class="views">
+        <div class="vp main"><canvas></canvas><div class="msg">Loading…</div></div>
+        <div class="vp side"><canvas></canvas><div class="msg" hidden></div></div>
+        <div class="vp side"><canvas></canvas><div class="msg" hidden></div></div>
+      </div>
+      <div class="tools">
+        <div class="seg plain" id="toolSeg" role="group" aria-label="Mouse tool">
+          <button data-tool="scroll" title="Drag to move through slices (S)">Scroll</button>
+          <button data-tool="window" title="Drag to change brightness and contrast (W)">Window</button>
+          <button data-tool="pan" title="Drag to move the image (H)">Pan</button>
+          <button data-tool="zoom" title="Drag up or down to zoom (Z)">Zoom</button>
+          <button data-tool="cross" title="Click a point to line up all three views on it (C)">Crosshair</button>
+        </div>
+        <div class="seg plain" id="presetSeg" role="group" aria-label="Window presets"></div>
+        <button class="btn" id="resetBtn" title="Reset zoom, pan and window (R)">Reset</button>
+        <label class="slice"><span id="sliceLbl">Slice</span><input type="range" id="slider" min="1" max="1" value="1" aria-label="Slice"></label>
+        <span class="hint">The mouse wheel moves through slices. Double-click a small view to make it the large one. Keys: arrows for slices, 1–4 for presets.</span>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="IDRF scoring">
+      <div class="panel-h">
+        <h2>Image-defined risk factors</h2>
+        <div class="tally"><span id="answered">0 of 20 answered</span><span class="p" id="presentN">0 present</span><span id="draft"></span></div>
+        <details class="def">
+          <summary>How encasement is defined</summary>
+          <p>Encasement means the tumour is in contact with more than 50% of the vessel circumference. A flattened vein with no visible lumen also counts. Contact with less than 50% of the circumference is not an IDRF (INRG imaging consensus, Brisse et al., Radiology 2011).</p>
+        </details>
+      </div>
+      <div class="panel-b" id="list"></div>
+      <div class="panel-f">
+        <button class="btn primary" id="saveBtn" disabled>Save and next case</button>
+        <span class="left" id="leftN"></span>
+      </div>
+    </aside>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+
+/* ------------------------------------------------------------ API */
+async function api(path, opts = {}) {
+  const r = await fetch(path, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } }, opts));
+  if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
+  if (!r.ok) { let m = 'Something went wrong. Try again.'; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r;
+}
+const fmt = s => { s = Math.round(s); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+let toastT = 0;
+function toast(m, err) { const t = $('#toast'); t.textContent = m; t.classList.toggle('err', !!err); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), err ? 4500 : 2200); }
+
+/* ------------------------------------------------------------ volume loading */
+const volCache = new Map();   // code -> Promise<{m, vol}>
+function fetchVolume(code, onProgress) {
+  if (volCache.has(code)) return volCache.get(code);
+  const p = (async () => {
+    const m = await (await api(`/api/case/${code}/meta`)).json();
+    const r = await api(`/api/case/${code}/volume`);
+    const total = +r.headers.get('Content-Length') || 0, rd = r.body.getReader(), chunks = [];
+    let got = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); got += value.length; if (onProgress && total) onProgress(got / total); }
+    const ds = new Blob(chunks).stream().pipeThrough(new DecompressionStream('gzip'));
+    const buf = await new Response(ds).arrayBuffer();
+    const vol = new Int16Array(buf);
+    if (vol.length !== m.nx * m.ny * m.nz) throw new Error('Image data size does not match. Ask the coordinator to scan again.');
+    return { m, vol };
+  })();
+  volCache.set(code, p);
+  p.catch(() => volCache.delete(code));
+  while (volCache.size > 2) volCache.delete(volCache.keys().next().value);
+  return p;
+}
+
+/* ------------------------------------------------------------ viewer */
+const PRESETS = [['Soft tissue', 400, 40], ['Vessels', 500, 120], ['Liver', 160, 90], ['Bone', 1800, 400]];
+const LUT = new Uint8ClampedArray(4096);
+const V = { W: 400, L: 40, tool: matchMedia('(pointer: coarse)').matches ? 'scroll' : 'window', vol: null, m: null, pos: { i: 0, j: 0, k: 0 } };
+function setWL(W, L) { V.W = Math.max(1, Math.round(W)); V.L = Math.round(L); const lo = V.L - V.W / 2; for (let i = 0; i < 4096; i++) LUT[i] = ((i - 1024 - lo) / V.W) * 255; }
+setWL(400, 40);
+const NAMES = { ax: 'Axial', cor: 'Coronal', sag: 'Sagittal' };
+const ORIENT = { ax: ['A', 'P', 'R', 'L'], cor: ['S', 'I', 'R', 'L'], sag: ['S', 'I', 'A', 'P'] };
+const maxIdx = t => (!V.m ? 0 : t === 'ax' ? V.m.nz - 1 : t === 'cor' ? V.m.ny - 1 : V.m.nx - 1);
+const getIdx = t => (t === 'ax' ? V.pos.k : t === 'cor' ? V.pos.j : V.pos.i);
+function setIdx(t, v) { v = Math.max(0, Math.min(maxIdx(t), Math.round(v))); if (t === 'ax') V.pos.k = v; else if (t === 'cor') V.pos.j = v; else V.pos.i = v; }
+
+class VP {
+  constructor(el, type) {
+    this.el = el; this.cv = el.querySelector('canvas'); this.ctx = this.cv.getContext('2d'); this.msg = el.querySelector('.msg');
+    this.type = type; this.zoom = 1; this.px = 0; this.py = 0; this.off = document.createElement('canvas'); this.octx = this.off.getContext('2d');
+    this.img = null; this.pts = new Map(); this.acc = 0; this.wacc = 0; this.lastTap = 0; this.bind();
+  }
+  dims() { const m = V.m; if (this.type === 'ax') return [m.nx, m.ny, m.sy / m.sx]; if (this.type === 'cor') return [m.nx, m.nz, m.sz / m.sx]; return [m.ny, m.nz, m.sz / m.sy]; }
+  resize() { const d = devicePixelRatio || 1, w = Math.max(1, Math.round(this.el.clientWidth * d)), h = Math.max(1, Math.round(this.el.clientHeight * d)); if (this.cv.width !== w || this.cv.height !== h) { this.cv.width = w; this.cv.height = h; } }
+  image() {
+    const [w, h] = this.dims(), m = V.m, v = V.vol, P = V.pos, nx = m.nx, ny = m.ny, nz = m.nz, plane = nx * ny;
+    if (this.off.width !== w || this.off.height !== h || !this.img) { this.off.width = w; this.off.height = h; this.img = this.octx.createImageData(w, h); }
+    const d = this.img.data;
+    const put = (o, hu) => { let t = hu + 1024; t = t < 0 ? 0 : t > 4095 ? 4095 : t; const g = LUT[t]; d[o] = g; d[o + 1] = g; d[o + 2] = g; d[o + 3] = 255; };
+    if (this.type === 'ax') { const b = P.k * plane; for (let p = 0; p < plane; p++) put(p * 4, v[b + p]); }
+    else if (this.type === 'cor') { for (let z = 0; z < nz; z++) { const b = z * plane + P.j * nx; for (let x = 0; x < nx; x++) put((z * nx + x) * 4, v[b + x]); } }
+    else { for (let z = 0; z < nz; z++) { const b = z * plane + P.i; for (let y = 0; y < ny; y++) put((z * ny + y) * 4, v[b + y * nx]); } }
+    this.octx.putImageData(this.img, 0, 0);
+  }
+  draw() {
+    const c = this.cv, x = this.ctx, d = devicePixelRatio || 1;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+    if (!V.vol) return;
+    const [w, h, a] = this.dims(), fit = Math.min(c.width / w, c.height / (h * a)) * 0.97, s = fit * this.zoom;
+    const dw = w * s, dh = h * a * s, ox = (c.width - dw) / 2 + this.px * d, oy = (c.height - dh) / 2 + this.py * d;
+    this.map = { ox, oy, s, a };
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(this.off, 0, 0, w, h, ox, oy, dw, dh);
+    const P = V.pos; let vx, hy;
+    if (this.type === 'ax') { vx = P.i; hy = P.j; } else if (this.type === 'cor') { vx = P.i; hy = P.k; } else { vx = P.j; hy = P.k; }
+    x.save(); x.strokeStyle = 'rgba(255,255,255,.3)'; x.lineWidth = d; x.setLineDash([4 * d, 5 * d]);
+    const lx = ox + (vx + 0.5) * s, ly = oy + (hy + 0.5) * s * a;
+    x.beginPath(); x.moveTo(lx, oy); x.lineTo(lx, oy + dh); x.moveTo(ox, ly); x.lineTo(ox + dw, ly); x.stroke(); x.restore();
+    const small = this.el.clientWidth < 260, fs = (small ? 10.5 : 12) * d, pad = 8 * d;
+    x.font = `${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+    x.fillStyle = 'rgba(226,233,240,.9)'; x.shadowColor = 'rgba(0,0,0,.9)'; x.shadowBlur = 3 * d;
+    x.textBaseline = 'top'; x.textAlign = 'left';
+    x.fillText(NAMES[this.type], pad, pad);
+    x.fillText(`Im ${getIdx(this.type) + 1} / ${maxIdx(this.type) + 1}`, pad, pad + fs * 1.3);
+    x.textBaseline = 'bottom'; x.fillText(`W ${V.W}   L ${V.L}`, pad, c.height - pad);
+    x.textAlign = 'right'; x.fillText(`${this.zoom.toFixed(1)}×`, c.width - pad, c.height - pad);
+    const [T, B, Lf, R] = ORIENT[this.type];
+    x.fillStyle = 'rgba(226,233,240,.7)'; x.textAlign = 'center';
+    x.textBaseline = 'top'; x.fillText(T, c.width / 2, pad);
+    x.textBaseline = 'bottom'; x.fillText(B, c.width / 2, c.height - pad);
+    x.textBaseline = 'middle'; x.textAlign = 'left'; x.fillText(Lf, pad, c.height / 2);
+    x.textAlign = 'right'; x.fillText(R, c.width - pad, c.height / 2);
+    x.shadowBlur = 0;
+    this.cv.setAttribute('aria-label', `${NAMES[this.type]} CT view, image ${getIdx(this.type) + 1} of ${maxIdx(this.type) + 1}`);
+  }
+  toImg(e) { const r = this.cv.getBoundingClientRect(), d = devicePixelRatio || 1, m = this.map; return [((e.clientX - r.left) * d - m.ox) / m.s - 0.5, ((e.clientY - r.top) * d - m.oy) / (m.s * m.a) - 0.5]; }
+  cross(e) {
+    if (!this.map || !V.vol) return;
+    const [u, v] = this.toImg(e);
+    if (this.type === 'ax') { setIdx('sag', u); setIdx('cor', v); } else if (this.type === 'cor') { setIdx('sag', u); setIdx('ax', v); } else { setIdx('cor', u); setIdx('ax', v); }
+    render();
+  }
+  bind() {
+    const c = this.cv;
+    c.addEventListener('pointerdown', e => {
+      c.setPointerCapture(e.pointerId); this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+      if (this.pts.size === 2) { const [p, q] = [...this.pts.values()]; this.pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: this.zoom }; }
+      else if (V.tool === 'cross') this.cross(e);
+      this.acc = 0;
+    });
+    c.addEventListener('pointermove', e => {
+      const p = this.pts.get(e.pointerId); if (!p || !V.vol) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (this.pts.size === 2 && this.pinch) { const [a, b] = [...this.pts.values()]; this.zoom = Math.max(0.5, Math.min(10, this.pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / this.pinch.d)); render(); return; }
+      switch (V.tool) {
+        case 'scroll': this.acc += dy; while (Math.abs(this.acc) >= 6) { step(this, Math.sign(this.acc)); this.acc -= 6 * Math.sign(this.acc); } break;
+        case 'window': setWL(V.W + dx * 2, V.L + dy * 1.5); syncPresets(); render(); break;
+        case 'pan': this.px += dx; this.py += dy; render(); break;
+        case 'zoom': this.zoom = Math.max(0.5, Math.min(10, this.zoom * Math.exp(-dy * 0.01))); render(); break;
+        case 'cross': this.cross(e); break;
+      }
+    });
+    const up = e => {
+      const p = this.pts.get(e.pointerId); this.pts.delete(e.pointerId); if (this.pts.size < 2) this.pinch = null;
+      if (p && e.pointerType === 'touch' && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 8) { const t = performance.now(); if (t - this.lastTap < 320) promote(this); this.lastTap = t; }
+    };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    c.addEventListener('dblclick', () => promote(this));
+    c.addEventListener('wheel', e => {
+      e.preventDefault(); if (!V.vol) return;
+      if (e.ctrlKey) { this.zoom = Math.max(0.5, Math.min(10, this.zoom * Math.exp(-e.deltaY * 0.004))); render(); return; }
+      this.wacc += e.deltaY; const st = e.deltaMode === 1 ? 1 : 40;
+      while (Math.abs(this.wacc) >= st) { step(this, Math.sign(this.wacc)); this.wacc -= st * Math.sign(this.wacc); }
+    }, { passive: false });
+  }
+}
+const vps = [...document.querySelectorAll('.vp')].map((el, i) => new VP(el, ['ax', 'cor', 'sag'][i]));
+let raf = 0;
+function render() { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; for (const v of vps) { if (V.vol) v.image(); v.draw(); } syncSlice(); }); }
+function step(vp, n) { setIdx(vp.type, getIdx(vp.type) + n); render(); }
+function promote(vp) { if (vp === vps[0]) return; [vps[0].type, vp.type] = [vp.type, vps[0].type]; for (const v of vps) { v.zoom = 1; v.px = 0; v.py = 0; } render(); }
+new ResizeObserver(() => { for (const v of vps) v.resize(); render(); }).observe($('.views'));
+function showMsg(t) { vps.forEach((v, i) => { v.msg.hidden = !t; v.msg.textContent = i === 0 ? (t || '') : ''; }); }
+
+const slider = $('#slider'), sliceLbl = $('#sliceLbl');
+function syncSlice() { const t = vps[0].type, m = maxIdx(t) + 1; slider.max = m; slider.value = getIdx(t) + 1; sliceLbl.textContent = V.vol ? `${NAMES[t]} ${getIdx(t) + 1} of ${m}` : 'Slice'; }
+slider.addEventListener('input', () => { setIdx(vps[0].type, slider.value - 1); render(); });
+const toolSeg = $('#toolSeg');
+function setTool(t) { V.tool = t; for (const b of toolSeg.children) b.setAttribute('aria-pressed', String(b.dataset.tool === t)); }
+toolSeg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTool(b.dataset.tool); });
+setTool(V.tool);
+const presetSeg = $('#presetSeg');
+presetSeg.innerHTML = PRESETS.map(([n], i) => `<button data-p="${i}" title="Key ${i + 1}">${n}</button>`).join('');
+function syncPresets() { [...presetSeg.children].forEach((b, i) => b.setAttribute('aria-pressed', String(PRESETS[i][1] === V.W && PRESETS[i][2] === V.L))); }
+function preset(i) { setWL(PRESETS[i][1], PRESETS[i][2]); syncPresets(); render(); }
+presetSeg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) preset(+b.dataset.p); });
+syncPresets();
+function resetView() { for (const v of vps) { v.zoom = 1; v.px = 0; v.py = 0; } preset(0); }
+$('#resetBtn').addEventListener('click', resetView);
+
+document.addEventListener('keydown', e => {
+  if (e.target.closest('textarea, input, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'ArrowUp' || k === 'ArrowLeft') { step(vps[0], -1); e.preventDefault(); }
+  else if (k === 'ArrowDown' || k === 'ArrowRight') { step(vps[0], 1); e.preventDefault(); }
+  else if (k === 'PageUp') { step(vps[0], -5); e.preventDefault(); }
+  else if (k === 'PageDown') { step(vps[0], 5); e.preventDefault(); }
+  else if (k.length === 1 && '1234'.includes(k)) preset(+k - 1);
+  else if (k === 'r' || k === 'R') resetView();
+  else { const t = { s: 'scroll', w: 'window', h: 'pan', z: 'zoom', c: 'cross' }[k.toLowerCase()]; if (t) setTool(t); }
+});
+
+/* ------------------------------------------------------------ worklist and scoring */
+let GROUPS = [], ITEMS = [], WL = { cases: [] }, idx = 0, R = null, dirty = false, draftT = 0, loadTok = 0;
+const code = () => (WL.cases[idx] || {}).code;
+
+function buildChecklist() {
+  $('#list').innerHTML = GROUPS.map(g => `
+    <section class="grp" data-g="${g.id}">
+      <div class="grp-h"><h3>${g.name}</h3><span class="grp-n"></span>
+        <button class="linkbtn" data-na="${g.id}" title="Mark every item in this region N/A">Region not imaged</button></div>
+      ${g.items.map(it => `
+        <div class="item" data-id="${it.id}">
+          <div class="item-t" id="t-${it.id}">${it.t}</div>
+          <div class="seg ans" role="group" aria-labelledby="t-${it.id}"><button data-v="absent" aria-pressed="false">Absent</button><button data-v="present" aria-pressed="false">Present</button><button data-v="na" aria-pressed="false">N/A</button></div>
+        </div>`).join('')}
+    </section>`).join('') + `
+    <div class="extra">
+      <div class="conf"><span id="confLbl">Confidence in this read</span>
+        <div class="seg plain" id="conf" role="group" aria-labelledby="confLbl">${[1, 2, 3, 4, 5].map(n => `<button data-c="${n}" title="${n === 1 ? 'Low' : n === 5 ? 'High' : n}">${n}</button>`).join('')}</div></div>
+      <textarea id="notes" rows="2" placeholder="Notes (optional)" aria-label="Notes"></textarea>
+    </div>`;
+  $('#notes').addEventListener('input', e => { if (R) { R.notes = e.target.value; touch(); } });
+}
+$('#list').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !R) return;
+  if (b.dataset.v) { const id = b.closest('.item').dataset.id; if (R.answers[id] === b.dataset.v) delete R.answers[id]; else R.answers[id] = b.dataset.v; }
+  else if (b.dataset.na) GROUPS.find(g => g.id === b.dataset.na).items.forEach(it => { R.answers[it.id] = 'na'; });
+  else if (b.dataset.c) R.confidence = R.confidence === +b.dataset.c ? null : +b.dataset.c;
+  else return;
+  touch(); syncChecklist();
+});
+
+function syncChecklist() {
+  const r = R || { answers: {}, confidence: null, notes: '', saved: false };
+  const ans = Object.keys(r.answers).length, pres = ITEMS.filter(i => r.answers[i.id] === 'present').length;
+  for (const el of document.querySelectorAll('.item')) {
+    const v = r.answers[el.dataset.id]; el.dataset.state = v || '';
+    for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === v));
+  }
+  for (const g of GROUPS) document.querySelector(`[data-g="${g.id}"] .grp-n`).textContent = `${g.items.filter(it => r.answers[it.id]).length}/${g.items.length}`;
+  for (const b of $('#conf').children) b.setAttribute('aria-pressed', String(+b.dataset.c === r.confidence));
+  const ta = $('#notes'); if (document.activeElement !== ta) ta.value = r.notes || '';
+  $('#answered').textContent = `${ans} of ${ITEMS.length} answered`;
+  $('#presentN').textContent = `${pres} present`;
+  const left = ITEMS.length - ans, sb = $('#saveBtn');
+  sb.disabled = !R || left > 0;
+  sb.textContent = r.saved ? 'Update scores' : 'Save and next case';
+  $('#leftN').textContent = !R ? '' : left > 0 ? `${left} item${left === 1 ? '' : 's'} left to answer` : (r.saved ? 'Saved. Changes need another save.' : 'All items answered');
+}
+
+function syncHeader() {
+  const n = WL.cases.length, s = WL.cases.filter(c => c.saved).length;
+  $('#caseN').textContent = n ? `Case ${idx + 1} of ${n}` : 'No cases yet';
+  $('#scoredN').textContent = n ? `${s} scored` : '';
+  $('#barFill').style.width = n ? `${(100 * s) / n}%` : '0';
+  $('#code').textContent = code() || '—';
+  $('#prevBtn').disabled = idx <= 0; $('#nextBtn').disabled = idx >= n - 1;
+  const dc = document.getElementById('donecard'); if (dc) dc.remove();
+  if (n && s === n) $('#list').insertAdjacentHTML('afterbegin', `<div class="donecard" id="donecard"><p><b>All ${n} cases on your list are scored.</b> Thank you. You can still open any case with the arrows at the top to change it.</p></div>`);
+}
+
+function touch() { dirty = true; $('#draft').textContent = 'Saving…'; clearTimeout(draftT); draftT = setTimeout(flush, 700); }
+async function flush() {
+  clearTimeout(draftT); if (!R || !dirty || !R.code) return; dirty = false;
+  try { await api(`/api/case/${R.code}/draft`, { method: 'POST', body: JSON.stringify(payload()) }); $('#draft').textContent = 'Draft saved'; }
+  catch (e) { dirty = true; $('#draft').textContent = 'Not saved'; }
+}
+const payload = () => ({ answers: R.answers, confidence: R.confidence, notes: R.notes || '', seconds: R.seconds || 0 });
+addEventListener('pagehide', () => { if (R && R.code && dirty) navigator.sendBeacon(`/api/case/${R.code}/draft`, new Blob([JSON.stringify(payload())], { type: 'application/json' })); });
+
+async function openCase(i) {
+  if (!WL.cases.length) return;
+  await flush();
+  idx = Math.max(0, Math.min(WL.cases.length - 1, i));
+  const c = code(), tok = ++loadTok;
+  R = null; V.vol = null; V.m = null; syncHeader(); syncChecklist(); showMsg('Loading images…'); render();
+  try {
+    const [rd, data] = await Promise.all([
+      api(`/api/case/${c}/read`).then(r => r.json()),
+      fetchVolume(c, f => { if (tok === loadTok) showMsg(`Loading images ${Math.round(f * 100)}%`); })
+    ]);
+    if (tok !== loadTok) return;
+    R = Object.assign({ code: c }, rd); dirty = false; $('#draft').textContent = '';
+    V.m = data.m; V.vol = data.vol;
+    V.pos = { i: Math.floor(V.m.nx / 2), j: Math.floor(V.m.ny / 2), k: Math.floor(V.m.nz / 2) };
+    for (const v of vps) { v.zoom = 1; v.px = 0; v.py = 0; }
+    showMsg(''); syncChecklist(); syncTimer(); render();
+    const nxt = WL.cases[idx + 1]; if (nxt) setTimeout(() => fetchVolume(nxt.code).catch(() => {}), 400);
+  } catch (e) {
+    if (tok !== loadTok) return;
+    showMsg(`This case could not be opened. ${e.message} Case code: ${c}.`);
+  }
+}
+$('#prevBtn').addEventListener('click', () => openCase(idx - 1));
+$('#nextBtn').addEventListener('click', () => openCase(idx + 1));
+
+$('#saveBtn').addEventListener('click', async () => {
+  if (!R) return; const sb = $('#saveBtn'); sb.disabled = true;
+  const was = R.saved;
+  try {
+    clearTimeout(draftT);
+    await api(`/api/case/${R.code}/save`, { method: 'POST', body: JSON.stringify(payload()) });
+    R.saved = true; dirty = false; WL.cases[idx].saved = true;
+    toast(`${was ? 'Updated' : 'Saved'} ${R.code} after ${fmt(R.seconds)}`);
+    syncHeader(); syncChecklist();
+    if (!was) { const n = WL.cases.length; for (let s = 1; s <= n; s++) { const j = (idx + s) % n; if (!WL.cases[j].saved) { openCase(j); return; } } }
+  } catch (e) { toast(e.message, true); syncChecklist(); }
+});
+
+let last = performance.now(), since = 0;
+function syncTimer() { $('#timer').textContent = fmt(R ? R.seconds : 0); }
+setInterval(() => {
+  const t = performance.now(), dt = (t - last) / 1000; last = t;
+  if (document.hidden || !R || !V.vol) return;
+  R.seconds = (R.seconds || 0) + dt; syncTimer();
+  since += dt; if (since > 15) { since = 0; dirty = true; flush(); }
+}, 500);
+
+$('#logout').addEventListener('click', async () => { await flush(); await api('/api/logout', { method: 'POST' }).catch(() => {}); location.href = '/login'; });
+
+(async () => {
+  try {
+    const [me, items, wl] = await Promise.all([api('/api/me').then(r => r.json()), api('/api/idrf').then(r => r.json()), api('/api/worklist').then(r => r.json())]);
+    $('#who').textContent = `${me.name}, ${me.role === 'primary' ? 'primary reader' : 'second reader'}`;
+    GROUPS = items.groups; ITEMS = GROUPS.flatMap(g => g.items); WL = wl;
+    buildChecklist(); syncChecklist(); syncHeader();
+    if (!WL.cases.length) { showMsg('No cases are ready for you yet. The study coordinator will let you know when they are.'); return; }
+    openCase(WL.next == null ? 0 : WL.next);
+  } catch (e) { showMsg(e.message); }
+})();
+})();
+</script>
+</body>
+</html>

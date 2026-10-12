@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — IDRF Reader</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+body{display:grid;place-items:center;padding:24px}
+.card{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:26px 26px 22px}
+h1{margin:0;font-size:22px}
+.sub{margin:4px 0 22px;color:var(--muted);font-size:13px}
+label{display:block;font-size:13px;margin:0 0 5px}
+input{width:100%;margin-bottom:14px;padding:9px 11px;font-size:15px}
+.btn.primary{width:100%;padding:11px;font-size:15px;margin-top:4px}
+.err{color:var(--danger);font-size:13px;min-height:1.4em;margin:10px 0 0}
+.foot{margin-top:18px;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <h1>IDRF Reader</h1>
+  <p class="sub">Neuroblastoma image-defined risk factor study</p>
+  <label for="u">Username</label>
+  <input id="u" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button class="btn primary" type="submit" id="go">Sign in</button>
+  <p class="err" id="err" role="alert"></p>
+  <p class="foot">Readers use the account the study coordinator created for them. The coordinator signs in as admin.</p>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  const go = document.getElementById('go'), err = document.getElementById('err');
+  go.disabled = true; err.textContent = '';
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || 'Sign-in failed.');
+    location.href = j.redirect;
+  } catch (x) { err.textContent = x.message; go.disabled = false; }
+});
+</script>
+</body>
+</html>

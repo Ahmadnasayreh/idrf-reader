@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study coordinator — IDRF Reader</title>
+<link rel="stylesheet" href="/static/app.css">
+<style>
+.top-r{margin-left:auto;display:flex;gap:10px;align-items:center}
+.wrap{max-width:1180px;margin:0 auto;padding:10px 20px 60px}
+section{margin-top:28px}
+h2{font-size:17px;margin:0 0 4px}
+.lead{margin:0 0 12px;color:var(--muted);font-size:13px;max-width:78ch}
+.facts{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px;min-width:150px}
+.fact b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.fact span{font-size:12.5px;color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 11px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:12px;color:var(--muted);font-weight:700}
+td.wrapc{white-space:normal;min-width:220px;max-width:420px}
+td input[type=text]{width:9em;padding:4px 7px;font-size:13px}
+td select{padding:4px 6px;font-size:13px}
+.st{font-weight:700}
+.st.ready{color:var(--ok)} .st.error,.st.missing{color:var(--danger)} .st.pending{color:var(--muted)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.scan{font-size:13px;color:var(--muted)}
+details.log{margin-top:8px;font-size:12.5px}
+details.log pre{margin:6px 0 0;max-height:200px;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;white-space:pre-wrap}
+form.add{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+form.add label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+form.add input,form.add select{min-width:150px}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:700}
+.tag.yes{background:var(--absent);color:var(--absent-ink)}
+.tag.no{background:var(--present);color:var(--present-ink)}
+.chg{font-weight:700}
+.empty{padding:14px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><b>IDRF Reader</b><span>Study coordinator</span></div>
+  <div class="top-r"><button class="btn" id="logout">Sign out</button></div>
+</header>
+<div class="wrap">
+  <div class="facts" id="facts"></div>
+
+  <section>
+    <h2>Images</h2>
+    <p class="lead">Put each scan in its own folder inside <b>data/dicom</b> on the server, then scan. Each folder becomes one blinded case with a random code. Readers only ever see the code, never the folder name. Set the patient and timepoint so before-and-after pairs can be linked; tick double read for cases the second reader should also score.</p>
+    <div class="row"><button class="btn primary" id="scanBtn">Scan for new images</button><span class="scan" id="scanTxt"></span></div>
+    <details class="log"><summary>Scan log</summary><pre id="log">No scan yet.</pre></details>
+    <div class="tbl" style="margin-top:12px"><table>
+      <thead><tr><th>Code</th><th>Folder</th><th>Patient</th><th>Timepoint</th><th>Double read</th><th>Images</th><th>Series used</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody id="cases"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Readers</h2>
+    <p class="lead">Primary readers score every case. Second readers score only the cases marked double read, which is how inter-reader agreement is measured.</p>
+    <form class="add" id="addForm">
+      <label>Name<input type="text" name="name" required placeholder="Dr. Name Surname"></label>
+      <label>Username<input type="text" name="username" required autocapitalize="none" spellcheck="false" placeholder="rad1"></label>
+      <label>Password<input type="text" name="password" required minlength="8" placeholder="8 characters or more"></label>
+      <label>Role<select name="role"><option value="primary">Primary reader</option><option value="second">Second reader</option></select></label>
+      <button class="btn primary" type="submit">Add reader</button>
+    </form>
+    <div class="tbl"><table>
+      <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Scored</th><th>Median time per case</th><th>Time left at this pace</th><th>Account</th></tr></thead>
+      <tbody id="readers"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Agreement between readers</h2>
+    <p class="lead">Present versus absent, counting only items both readers could assess, on cases both have saved.</p>
+    <div id="agree"></div>
+  </section>
+
+  <section>
+    <h2>Before and after induction</h2>
+    <p class="lead" id="pairsLead">Pairs are linked by patient and timepoint.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Patient</th><th>At diagnosis</th><th>After induction</th><th>IDRFs present</th><th>All cleared</th><th>Still present</th><th>New</th></tr></thead>
+      <tbody id="pairs"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Export</h2>
+    <p class="lead">One row per saved read, with all 20 items, time, confidence, patient and timepoint.</p>
+    <a class="btn primary" href="/api/admin/export.csv" style="text-decoration:none;display:inline-block">Download reads as CSV</a>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } }, opts));
+  if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
+  if (!r.ok) { let m = 'Something went wrong. Try again.'; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+let toastT = 0;
+function toast(m, err) { const t = $('#toast'); t.textContent = m; t.classList.toggle('err', !!err); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), err ? 4500 : 2000); }
+const dur = s => { if (s == null) return '—'; s = Math.round(s); if (s < 60) return `${s} s`; const m = Math.floor(s / 60); if (m < 60) return `${m} min ${s % 60} s`; return `${Math.floor(m / 60)} h ${m % 60} min`; };
+const STATUS = { ready: 'Ready', error: 'Could not read', missing: 'Folder missing', pending: 'Waiting' };
+
+let D = null, polling = 0;
+async function load() {
+  D = await api('/api/admin/overview');
+  const ready = D.cases.filter(c => c.status === 'ready').length, saved = D.progress.reduce((a, p) => a + p.saved, 0);
+  $('#facts').innerHTML = `
+    <div class="fact"><b>${ready} / ${D.cases.length}</b><span>Cases ready to read</span></div>
+    <div class="fact"><b>${D.cases.filter(c => c.double_read && c.status === 'ready').length}</b><span>Marked for double read</span></div>
+    <div class="fact"><b>${D.readers.filter(r => r.active).length}</b><span>Active readers</span></div>
+    <div class="fact"><b>${saved}</b><span>Reads saved</span></div>`;
+
+  $('#cases').innerHTML = D.cases.length ? D.cases.map(c => `
+    <tr data-id="${c.id}">
+      <td><b>${esc(c.code)}</b></td><td>${esc(c.folder)}</td>
+      <td><input type="text" data-f="patient" value="${esc(c.patient)}" aria-label="Patient for ${esc(c.code)}" placeholder="e.g. P001"></td>
+      <td><select data-f="timepoint" aria-label="Timepoint for ${esc(c.code)}">
+        <option value="" ${!c.timepoint ? 'selected' : ''}>Not set</option>
+        <option value="diagnosis" ${c.timepoint === 'diagnosis' ? 'selected' : ''}>At diagnosis</option>
+        <option value="post_induction" ${c.timepoint === 'post_induction' ? 'selected' : ''}>After induction</option></select></td>
+      <td><input type="checkbox" data-f="double_read" ${c.double_read ? 'checked' : ''} aria-label="Double read for ${esc(c.code)}"></td>
+      <td>${esc(c.size)}</td><td class="wrapc">${esc(c.series)}</td>
+      <td><span class="st ${c.status}">${STATUS[c.status] || esc(c.status)}</span></td>
+      <td class="wrapc">${esc(c.message)}</td>
+    </tr>`).join('') : `<tr><td colspan="9" class="empty">No cases yet. Copy scans into data/dicom, one folder per scan, then choose Scan for new images.</td></tr>`;
+
+  $('#readers').innerHTML = D.progress.length ? D.progress.map(p => {
+    const r = D.readers.find(x => x.id === p.id);
+    return `<tr data-rid="${p.id}">
+      <td>${esc(p.name)}</td><td>${esc(r.username)}</td>
+      <td><select data-rf="role" aria-label="Role for ${esc(p.name)}"><option value="primary" ${p.role === 'primary' ? 'selected' : ''}>Primary</option><option value="second" ${p.role === 'second' ? 'selected' : ''}>Second</option></select></td>
+      <td>${p.saved} of ${p.assigned}</td><td>${dur(p.median_seconds)}</td><td>${p.saved >= p.assigned ? 'Done' : dur(p.remaining_seconds)}</td>
+      <td><button class="btn" data-act="${p.active ? 'off' : 'on'}">${p.active ? 'Turn off' : 'Turn on'}</button> <button class="btn" data-act="pw">New password</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="empty">No readers yet. Add the radiologists above.</td></tr>`;
+
+  $('#agree').innerHTML = D.agreement.length ? D.agreement.map(a => `
+    <div class="facts" style="margin-top:0;margin-bottom:10px">
+      <div class="fact"><b>${a.kappa == null ? '—' : a.kappa.toFixed(2)}</b><span>Cohen's kappa, ${esc(a.a)} and ${esc(a.b)}</span></div>
+      <div class="fact"><b>${a.agreement == null ? '—' : Math.round(a.agreement * 100) + '%'}</b><span>Raw agreement</span></div>
+      <div class="fact"><b>${a.cases}</b><span>Cases scored by both</span></div>
+      <div class="fact"><b>${a.items}</b><span>Item pairs compared</span></div>
+    </div>
+    ${a.per_item.length ? `<details class="log" style="margin-bottom:16px"><summary>Agreement by item</summary><div class="tbl" style="margin-top:6px"><table><thead><tr><th>Item</th><th>Agreed</th><th>Compared</th></tr></thead><tbody>
+      ${a.per_item.map(p => `<tr><td>${esc(p.item)}</td><td>${p.agree}</td><td>${p.n}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`).join('')
+    : `<p class="empty" style="padding:0">Agreement appears once two readers have saved the same case.</p>`;
+
+  $('#pairsLead').textContent = D.pairs_reader ? `Pairs are linked by patient and timepoint, using reads from ${D.pairs_reader}. Readers never see which scans belong together.` : 'Pairs are linked by patient and timepoint. Readers never see which scans belong together.';
+  $('#pairs').innerHTML = D.pairs.length ? D.pairs.map(p => {
+    const has = p.before != null;
+    return `<tr><td>${esc(p.patient)}</td><td>${esc(p.diagnosis || 'Missing')}</td><td>${esc(p.post || 'Missing')}</td>
+      <td class="chg">${has ? `${p.before} → ${p.after}` : '—'}</td>
+      <td>${!has ? '<span class="muted">Both scans not scored yet</span>' : p.before === 0 ? '<span class="muted">No IDRFs at diagnosis</span>' : p.cleared ? '<span class="tag yes">Yes</span>' : '<span class="tag no">No</span>'}</td>
+      <td class="wrapc">${has ? esc(p.persisting.join(', ') || 'None') : '—'}</td>
+      <td class="wrapc">${has ? esc(p.new.join(', ') || 'None') : '—'}</td></tr>`;
+  }).join('') : `<tr><td colspan="7" class="empty">Set patient and timepoint on the cases above to link diagnosis and post-induction scans.</td></tr>`;
+
+  syncScan(D.import);
+}
+
+function syncScan(st) {
+  $('#scanBtn').disabled = st.running;
+  $('#scanTxt').textContent = st.running ? `Preparing ${Math.min(st.done + 1, st.total)} of ${st.total}${st.current ? ': ' + st.current : ''}` : st.finished ? `Last scan finished ${new Date(st.finished * 1000).toLocaleTimeString()}` : '';
+  $('#log').textContent = st.log.length ? st.log.join('\n') : 'No scan yet.';
+  if (st.running && !polling) polling = setInterval(async () => {
+    const s = await api('/api/admin/import-status'); syncScan(s);
+    if (!s.running) { clearInterval(polling); polling = 0; load(); }
+  }, 1500);
+}
+
+$('#scanBtn').addEventListener('click', async () => { try { const r = await api('/api/admin/rescan', { method: 'POST' }); syncScan(r.import); } catch (e) { toast(e.message, true); } });
+
+$('#cases').addEventListener('change', async e => {
+  const el = e.target, f = el.dataset.f; if (!f) return;
+  const id = el.closest('tr').dataset.id, body = {};
+  body[f] = el.type === 'checkbox' ? el.checked : el.value;
+  try { await api(`/api/admin/case/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); toast('Saved'); load(); } catch (x) { toast(x.message, true); }
+});
+
+$('#addForm').addEventListener('submit', async e => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await api('/api/admin/readers', { method: 'POST', body: JSON.stringify(Object.fromEntries(f)) }); toast(`Added ${f.get('name')}`); e.target.reset(); load(); }
+  catch (x) { toast(x.message, true); }
+});
+$('#readers').addEventListener('change', async e => {
+  const el = e.target; if (el.dataset.rf !== 'role') return;
+  try { await api(`/api/admin/readers/${el.closest('tr').dataset.rid}`, { method: 'PATCH', body: JSON.stringify({ role: el.value }) }); toast('Role changed'); load(); } catch (x) { toast(x.message, true); }
+});
+$('#readers').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const rid = b.closest('tr').dataset.rid; let body;
+  if (b.dataset.act === 'pw') { const pw = prompt('New password for this reader (8 characters or more):'); if (!pw) return; body = { password: pw }; }
+  else body = { active: b.dataset.act === 'on' };
+  try { await api(`/api/admin/readers/${rid}`, { method: 'PATCH', body: JSON.stringify(body) }); toast(body.password ? 'Password changed' : body.active ? 'Account turned on' : 'Account turned off'); load(); } catch (x) { toast(x.message, true); }
+});
+$('#logout').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }).catch(() => {}); location.href = '/login'; });
+
+load().catch(e => toast(e.message, true));
+})();
+</script>
+</body>
+</html>
