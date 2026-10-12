@@ -1,0 +1,224 @@
+# IDRF Reader
+
+A small web application for **blinded scoring of neuroblastoma image-defined risk factors (IDRFs)** on contrast-enhanced CT, at diagnosis and after induction chemotherapy.
+
+Radiologists open a link in their browser, sign in, and score the 20 IDRFs defined by the International Neuroblastoma Risk Group. The study coordinator manages cases and readers, follows progress, and exports the results. Images stay on the machine running the app; browsers receive pixel data and voxel spacing only, never DICOM header fields.
+
+![Reader view](docs/reader.png)
+
+## Features
+
+**For radiologists**
+- Axial, coronal and sagittal views with scroll, window/level presets, zoom, pan and a linked crosshair
+- The 20 IDRFs as a checklist (Absent / Present / N/A), with one click to mark a whole region as not imaged
+- Blinded: each scan shows only a random code, cases come in a different random order per reader, and nothing reveals the timepoint or which scans belong to the same patient
+- Drafts save automatically; time per case is recorded automatically; the next case preloads in the background
+
+**For the study coordinator**
+- Automatic import of DICOM folders, choosing the contrast-enhanced axial series (JPEG, JPEG-LS and JPEG 2000 compressed files supported through GDCM)
+- Reader accounts with two roles: primary (all cases) and second (double-read cases only)
+- Progress per reader, median time per case and estimated time left
+- Cohen's kappa and per-item agreement between readers
+- Before-and-after table per patient: IDRF count at diagnosis and after induction, cleared or not, which persisted
+- CSV export of every saved read
+
+![Coordinator view](docs/coordinator.png)
+
+## Requirements
+
+- Python 3.10 to 3.12
+- A recent Chrome, Edge or Firefox for the readers
+- Disk space of roughly twice the size of the DICOM data
+
+## Quick start
+
+### Windows
+
+1. Install Python from [python.org](https://www.python.org/downloads/) and tick **Add Python to PATH** during installation.
+2. Double-click **`run.bat`**. The first time, it creates a `.env` settings file and stops.
+3. Open `.env` in Notepad, change `ADMIN_PASSWORD`, save.
+4. Double-click **`run.bat`** again. It sets up a Python environment (first time only) and starts the app.
+5. Open **http://localhost:8080** and sign in as `admin` with your password.
+
+### Linux or macOS
+
+```bash
+./run.sh                 # first run creates .env and stops
+nano .env                # change ADMIN_PASSWORD
+./run.sh                 # sets up .venv (first time) and starts the app
+```
+
+Then open **http://localhost:8080**.
+
+### Manual setup (any system)
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt        # Windows: .venv\Scripts\pip install -r requirements.txt
+cp .env.example .env                             # then edit ADMIN_PASSWORD
+.venv/bin/python run.py                          # Windows: .venv\Scripts\python run.py
+```
+
+## Try it with synthetic test images
+
+The project includes a generator of synthetic CT phantoms (drawn by code, no patient data) so the full workflow can be checked before real images arrive:
+
+```bash
+.venv/bin/python tools/make_demo_data.py          # Windows: .venv\Scripts\python tools\make_demo_data.py
+```
+
+Then, in the coordinator page, choose **Scan for new images**. Eight test cases appear: four patients, each before and after induction. Add a test reader, open the app in a private browser window, sign in as that reader and score a case.
+
+**Start clean before real data:** stop the app and delete the `data` folder.
+
+## Adding study images
+
+1. **Remove patient identity first.** The app never sends DICOM header fields to browsers, but the files themselves sit on the machine.
+2. Put **one folder per scan** inside `data/dicom/`. Subfolders are fine. Use neutral names, never patient names or record numbers:
+
+   ```
+   data/dicom/
+     NB001_dx/      all DICOM files of the diagnostic CT
+     NB001_post/    all DICOM files of the post-induction CT
+     NB002_dx/
+     ...
+   ```
+
+3. The app picks the **contrast-enhanced axial CT series** in each folder, preferring slices of about 2.5 mm. The coordinator page shows which series was used and any warnings.
+4. Optionally add `data/cases.csv` so patients and timepoints fill in automatically:
+
+   ```csv
+   folder,patient,timepoint,double_read,series
+   NB001_dx,NB001,diagnosis,yes,
+   NB001_post,NB001,post_induction,yes,
+   NB002_dx,NB002,diagnosis,,portal
+   ```
+
+   `timepoint` is `diagnosis` or `post_induction`. `double_read` is `yes` for cases the second reader should also score. `series` optionally forces a series by part of its description. Empty cells are ignored, so values set in the coordinator page are kept.
+
+5. In the coordinator page, choose **Scan for new images**. Each folder becomes a case with a random code such as `NB-7KQ4`. Unchanged folders are skipped, so scanning again is always safe.
+
+## Readers
+
+In the coordinator page, under **Readers**, add each radiologist with a name, username, password and role:
+
+- **Primary reader** scores every case.
+- **Second reader** scores only the cases marked double read; this produces the inter-reader agreement figures.
+
+Readers sign in, and the next unscored case opens by itself. They mark each IDRF, then choose **Save and next case**.
+
+Radiologists must never use the `admin` account: it shows which scans belong to the same patient, which would break the blinding.
+
+## Running on a hospital server
+
+In `.env`:
+
+```ini
+HOST=0.0.0.0          # accept connections from other computers on the network
+PORT=8080
+```
+
+Readers then open `http://<server-address>:8080`. Open that port in the server firewall for the hospital network only.
+
+- **Never expose the app to the internet.** Remote access should go through the hospital VPN.
+- **HTTPS:** put the app behind the hospital's reverse proxy, then set `COOKIE_SECURE=1`.
+- **Run as a service** so it restarts with the server. A minimal systemd unit for Linux:
+
+  ```ini
+  # /etc/systemd/system/idrf-reader.service
+  [Unit]
+  Description=IDRF Reader
+  After=network.target
+
+  [Service]
+  WorkingDirectory=/opt/idrf-reader
+  ExecStart=/opt/idrf-reader/.venv/bin/python run.py
+  Restart=always
+  User=idrf
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+  ```bash
+  sudo systemctl enable --now idrf-reader
+  ```
+
+## Settings
+
+All settings live in `.env` (copy from `.env.example`). Real environment variables take precedence.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `ADMIN_PASSWORD` | must be changed | Password of the `admin` coordinator account |
+| `HOST` | `127.0.0.1` | `127.0.0.1` for this computer only; `0.0.0.0` to serve the network |
+| `PORT` | `8080` | Port the app listens on |
+| `DATA_DIR` | `data` | Folder for images, database and prepared cache |
+| `SESSION_HOURS` | `12` | How long a sign-in lasts |
+| `MAX_INPLANE` | `512` | Largest in-plane matrix sent to browsers; `256` loads four times lighter |
+| `PREFERRED_THICKNESS` | `2.5` | Slice thickness in mm preferred when a study has several contrast series |
+| `COOKIE_SECURE` | `0` | Set to `1` when served over HTTPS |
+
+## Backups
+
+Scores are stored in `data/idrf.db`. To take a safe copy while the app is running:
+
+```bash
+.venv/bin/python tools/backup.py
+```
+
+Copies go to `data/backups/`; the 30 most recent are kept. Schedule it nightly with cron or Windows Task Scheduler.
+
+## Results export
+
+The CSV export has one row per saved read: reader, role, case code, folder, patient, timepoint, seconds, confidence, number of IDRFs present, the answer for each of the 20 items, notes and save time.
+
+## Privacy and security
+
+- `data/` and `.env` are excluded by `.gitignore`. **Never commit patient images, the database or passwords.** Keeping this repository private is recommended.
+- Passwords are hashed with PBKDF2-SHA256. Sessions expire after `SESSION_HOURS`.
+- Sign-ins, failed sign-ins, saves, reader changes and exports are logged in the `audit` table.
+- Browsers receive only pixel data and voxel spacing; DICOM header fields stay on the server.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| The coordinator cannot sign in | `ADMIN_PASSWORD` is still the default. Change it in `.env` and restart. |
+| A case shows **Could not read** | The note beside it explains why, for example no axial CT series in the folder. Fix the folder and scan again. |
+| The wrong series was used | Put part of the right series description in the `series` column of `cases.csv` and scan again. |
+| Images load slowly | Set `MAX_INPLANE=256` in `.env`, restart and scan again. |
+| Other computers cannot open the app | Set `HOST=0.0.0.0` and check the firewall allows the port. |
+
+## Limits of this version
+
+- Images are copied into `data/dicom`; the app does not query PACS directly.
+- Enhanced multi-frame CT files are skipped; export as classic single-frame DICOM.
+- CT only; MRI series are not imported.
+- Scoring is by checklist; there are no drawing or measurement tools.
+
+## Project structure
+
+```
+app/
+  main.py            web server: sign-in, reader and coordinator APIs, statistics, export
+  dicom_import.py    DICOM scanning, series selection, volume preparation
+  idrf.py            the 20 IDRF definitions
+  db.py              SQLite schema
+  config.py          settings from .env
+  static/            reader, coordinator and sign-in pages, styles, fonts
+tools/
+  make_demo_data.py  synthetic CT phantoms for testing
+  backup.py          safe database backup
+run.py               starts the app
+run.bat / run.sh     one-click start on Windows / Linux and macOS
+```
+
+## References
+
+- Monclair T, et al. The International Neuroblastoma Risk Group (INRG) staging system: an INRG Task Force report. *J Clin Oncol.* 2009;27(2):298–303.
+- Brisse HJ, et al. Guidelines for imaging and staging of neuroblastic tumors: consensus report from the INRG Project. *Radiology.* 2011;261(1):243–257.
+
+## Licences of included components
+
+Atkinson Hyperlegible font: SIL Open Font License (Braille Institute of America). Dependencies: FastAPI (MIT), Uvicorn (BSD), pydicom (MIT), NumPy (BSD), GDCM (BSD). No licence is set for the application code itself; choose one before making the repository public.

@@ -1,0 +1,20 @@
+# Patient data, database and prepared images: never commit
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Local settings with passwords
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
